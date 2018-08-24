@@ -1,0 +1,140 @@
+#!/bin/bash
+
+main_menu_choice=null
+sub_menu_choice=null
+
+get_dbackup_mount_point () {
+	mount | grep -w / | awk '{print $1}'
+}
+
+blacklist_dbackup () {
+	mount | grep -w / | awk '{print $1}'
+}
+
+get_devices () {
+	cat /proc/partitions | grep -Ev '(loop|sr0)' | awk '{if(NR>2)print "/dev/"$4}' | grep -v "[[:digit:]]"
+}
+
+get_partitions () {
+	remove_dbackup=$(mount | grep -w / | awk '{print $1}')
+	cat /proc/partitions | grep -Ev '(loop|sr0)' | awk '{if(NR>2)print "/dev/"$4}' | grep "[[:digit:]]" | grep -v $remove_dbackup
+}
+
+
+menuitem_main_menu () {
+	RESULT=$(
+	whiptail --title "Main Menu" --menu "What operation do you want dbackup to perform: " 16 100 9 \
+		"1)" "Backup a partition"   \
+		"2)" "Restore a partition"  \
+		"3)" "Image a disk" \
+		"4)" "Restore from image" \
+		"5)" "Settings" \
+		"6)" "Exit" 3>&2 2>&1 1>&3
+	)
+	main_menu_choice=$RESULT
+}
+
+menuitem_backup_partition () {
+	ARRAY=()
+	var=$(get_partitions)
+	for i in ${var[@]}
+	do
+		index=$((index+1))
+		ARRAY+=("$i")
+		ARRAY+=("")
+		ARRAY+=("off")
+	done
+	NAME=$(whiptail --title "Backup partitions" \
+		--checklist "Select the partition(s) that you wish to backup:" 16 100 9 \
+		"${ARRAY[@]}" \
+		3>&1 1>&2 2>&3)
+	echo $NAME | sed 's/"//g'
+}
+
+action_backup_partition () {
+	partition=$1
+	device_name=$(echo "$partition" | awk -F '/' '{print $3}' | sed 's/"//g' | tr -d "\'")
+	mount_point="/tmp/$device_name"
+        backup_path="/tmp/backups"
+	
+        #If backup folder does not exist create mountpoint
+        if [ ! -e $backup_path ]; then
+                mkdir $backup_path
+	fi
+
+	#If mount point does not exist create mountpoint
+	if [ ! -e $mount_point ]; then
+		mkdir $mount_point
+	#If mount point does exist sanitize and create mountpoint
+	else
+		umount $mount_point
+		rmdir $mount_point
+		mkdir $mount_point
+	fi
+
+	#Add logic here to determine operating system etc
+	#for now just do this since we will only be backing up
+	#partitions with operating systems in them
+        timestamp=$(date +%m/%d/%Y:%R)
+
+	#Mounting as read only
+	mount -o ro $partition $mount_point
+	> $backup_path/backup.log;
+	> $backup_path/error.log;
+	tar -zcvpf "$backup_path/backup.tar.gz" --directory=$mount_point . > $backup_path/backup.log 2> $backup_path/backup.log &
+	{
+		echo -e "XXX\n$COUNTER\nPreparing to start backup... \nXXX"
+		total_files=$(find $mount_point | wc -l)
+         	COUNTER=0
+         	while [  $COUNTER -le 100 ]; do
+			current_progress=$(cat $backup_path/backup.log | wc -l)
+			COUNTER=$(echo "scale=2 ; ($current_progress/$total_files)*100" | bc | cut -f 1 -d '.')
+			current_file=$(tail -n 1 $backup_path/backup.log | awk -F '/' '{print "/" $2 "/" $3 "/"}' | sed 's/\/\///g')
+			echo -e "$timestamp - Total files: $total_files \t Files backed up: $current_progress \t Completed: $COUNTER%" >> /tmp/backup_audit.txt
+			echo -e "XXX\n$COUNTER\nBacking up: $current_file \nXXX"
+
+			if [ $(ps -aux | grep -w tar | grep -v grep  | wc -l) -eq 0 ]
+			then
+             			let COUNTER=COUNTER+100 
+			fi
+
+			sleep 5
+         	done
+	} | whiptail --title "Backing up partition" --gauge "Please wait while your partition is backing up" 6 60 0
+
+	#tar -zcpf /tmp/backups/hostname_date.tar.gz --directory=/tmp/sda1/ .
+	#tar -zxvpf /fullbackup.tar.gz
+}
+
+#Call main menu
+menuitem_main_menu
+
+case $main_menu_choice in
+	"1)")
+		result=$(menuitem_backup_partition)
+		for each in $result
+		do
+			action_backup_partition $each
+		done
+	;;
+
+	"2)")
+		echo "Opcion numero 2"
+	;;
+
+	"3)")
+		echo "Opcion numero 3"
+        ;;
+
+	"4)")
+		echo "Opcion numero 4"
+        ;;
+
+	"5)")
+		echo "Settings..."
+        ;;
+
+	"6)")
+                echo "Rebooting..."
+        ;;
+esac
