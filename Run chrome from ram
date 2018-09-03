@@ -1,0 +1,37 @@
+# /etc/fstab: static file system information.
+#
+# Use 'blkid' to print the universally unique identifier for a
+# device; this may be used with UUID= as a more robust way to name devices
+# that works even if disks are added and removed. See fstab(5).
+#
+# <file system> <mount point>   <type>  <options>       <dump>  <pass>
+# / was on /dev/sda1 during installation
+UUID=326e7adf-6204-4ebc-add9-21c8ac16a1da /               ext4    errors=remount-ro 0       1
+#/swapfile                                 none            swap    sw              0       0
+tmpfs /tmp tmpfs rw,nosuid,nodev
+tmpfs /home/ex/.cache/google-chrome tmpfs rw,noexec,nodev,nosuid,uid=ex,gid=ex,mode=0700 0 0
+tmpfs /home/ex/.config/google-chrome tmpfs rw,noexec,nodev,nosuid,uid=ex,gid=ex,mode=0700 0 0
+
+
+cat load_to_ram.sh 
+#!/bin/bash
+
+rsync -ra /preload/home/$USER/.cache/google-chrome/ /home/$USER/.cache/google-chrome/
+rsync -ra /preload/home/$USER/.config/google-chrome/ /home/$USER/.config/google-chrome/
+
+
+cat reset_ram_disk.sh
+rm -rf /home/$USER/.cache/google-chrome/
+rm -rf /home/$USER/.config/google-chrome/
+
+
+cat sync.sh 
+rm -rf /preload/home/
+rsync -ra --relative /home/$USER/.cache/google-chrome /preload/
+rsync -ra --relative /home/$USER/.config/google-chrome /preload/
+
+
+sudo inotifywait -r -m -c / | grep -v potato
+
+
+
